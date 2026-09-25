@@ -12,8 +12,6 @@ Mocks are out of this set: they convert through `phpunit-to-double` or `phpunit-
 
 - **AssertThatConstraintRector** — `assertThat($v, $constraint)`: relies on PHPUnit
   constraint objects (and composites/callbacks) with no Testo equivalent.
-- **ExpectExceptionMessageMatchesRector** — regex message matching; Testo's
-  `withMessage()` does literal matching, not PCRE, so conversion would change meaning.
 
 ## Implemented since the first cut
 
@@ -39,18 +37,21 @@ Mocks are out of this set: they convert through `phpunit-to-double` or `phpunit-
   `#[\Testo\Test]`. "Test method" mirrors PHPUnit discovery — a `#[\PHPUnit\Framework\Attributes\Test]`
   attribute (renamed in place to `#[\Testo\Test]`), a `@test` docblock annotation (tag removed, attribute
   added), or a `test`-prefixed method name (attribute added). Idempotent (skips a method already carrying
-  `#[\Testo\Test]`). **Residuals:** (1) only a class extending `TestCase` *directly* is converted — an
-  intermediate/custom base is left untouched (convert it at the base); (2) methods are NOT renamed —
+  `#[\Testo\Test]`). A detached class has no parent, so `#[\Override]` is dropped from every method an
+  implemented interface does not declare (`setUp()` and other `TestCase` hooks); an unresolvable
+  interface keeps all of them. A class reaching `TestCase` through an intermediate base keeps its `extends` and
+  `#[\Override]` and only gains the `#[\Testo\Test]` marks. **Residual:** methods are NOT renamed —
   Testo discovers by attribute, so keeping `testFoo()` is harmless, and prefix cleanup / call-site
   rewriting is left manual.
 - **ExpectExceptionToTestoRector** (registered) — now folds the fluent chain, not just the bare
   head. It operates at the statements level (matches the enclosing `StmtsAwareInterface` node and
   rewrites its `->stmts`): after a `$this->expectException($c)` statement it absorbs the
   uninterrupted run of immediately-following sibling `expectExceptionMessage($m)` /
-  `expectExceptionCode($n)` statements into `\Testo\Expect::exception($c)->withMessage($m)->withCode($n)`
-  and removes them. Conservative: the run stops at the first non-foldable statement (including
-  `expectExceptionMessageMatches`, whose regex has no `withMessage*` counterpart — see the stubbed
-  `ExpectExceptionMessageMatchesRector`), statements are never reordered or pulled across other code,
+  `expectExceptionMessageMatches($re)` / `expectExceptionCode($n)` statements into
+  `\Testo\Expect::exception($c)->withMessageContaining($m)->withMessagePattern($re)->withCode($n)`
+  and removes them. PHPUnit's `expectExceptionMessage()` matches a substring, hence
+  `withMessageContaining()` rather than the exact `withMessage()`. Conservative: the run stops at the
+  first non-foldable statement, statements are never reordered or pulled across other code,
   and a bare `expectExceptionMessage`/`Code` with no preceding `expectException` is left untouched.
 - **GroupToTestoRector** (registered) — collapses every PHPUnit group source on a node — the
   `@group` docblock annotation(s) **and** the repeatable single-name `#[Group]` attribute(s) — into
