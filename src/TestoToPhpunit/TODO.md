@@ -39,7 +39,7 @@ directory but are **not** registered in `config/testo-to-phpunit.php`.
   `\Testo\Expect::exception($c)->withMessage($m)->withCode($n)` into the separate PHPUnit statements
   `$this->expectException($c); $this->expectExceptionMessage($m); $this->expectExceptionCode($n);`.
   Mapped modifiers: substring `withMessageContaining` → `expectExceptionMessage` (also a substring
-  match), `withCode` → `expectExceptionCode`, regex `withMessagePattern` →
+  match), `withCode` → `expectExceptionCode`, regex `withMessageMatchingRegex` (or the deprecated `withMessagePattern`) →
   `expectExceptionMessageMatches`. **Residual:** the exact `withMessage` also maps to
   `expectExceptionMessage` and so loosens into a substring check. A chain with an unmapped modifier
   (`fromMethod`/`withPrevious`/`withoutPrevious`) or with two modifiers landing on the same PHPUnit
@@ -84,8 +84,32 @@ directory but are **not** registered in `config/testo-to-phpunit.php`.
   `Assert::array()->isList()`→`assertIsList`, `Assert::array()->sameElementsAs()`→`assertEqualsCanonicalizing`,
   …) into separate `assert*` statements, expanding 1→N where needed. A non-variable subject (e.g.
   `Assert::array($log->all())->isList()`) is hoisted into a scope-safe `$value` local so it is
-  evaluated once. Matchers with no faithful PHPUnit line (JSON path/structure, `every`, `sameSizeAs`,
-  custom) leave the whole chain untouched rather than half-converting.
+  evaluated once. A bare head with no matcher becomes its one `assertIs<Type>` line, in place, like `Assert::callable($x)`→`assertIsCallable`.
+  The `numeric` head has no mapping and stays untouched. The `iterable` head maps to `assertIsIterable`, and it shares the iterable matchers
+  with `array`: `contains`/`notContains`, `allInstanceOf`→`assertContainsOnlyInstancesOf`,
+  `allOf('int')`→`assertContainsOnlyInt` (likewise `array`/`bool`/`float`/`null`/`string` and the
+  `integer`/`boolean`/`double` aliases `allOf()` accepts), `hasCount`→`assertCount` and
+  `sameSizeAs`→`assertSameSize`. PHPUnit throws for a `Generator` where Testo counts it, so on the
+  `iterable` head the count-based two convert only for a subject (and an expected side) known to be
+  an array or a `Countable` iterable. On the `string` head, `matchesRegex`/`notMatchesRegex` map to
+  `assertMatchesRegularExpression`/`assertDoesNotMatchRegularExpression` (full PCRE on both sides; an
+  invalid pattern is an error), `same`/`notSame` map to `assertSame`/`assertNotSame`, and `notStartsWith`/`notEndsWith` to `assertStringStartsNotWith`/`assertStringEndsNotWith`. The string
+  comparison modifiers emit no line and select the assertion of every check after them:
+  `ignoringCase()` turns `contains`/`notContains` into `assertStringContainsStringIgnoringCase`/
+  `assertStringNotContainsStringIgnoringCase` and `same`/`notSame` into `assertEqualsIgnoringCase`/
+  `assertNotEqualsIgnoringCase`; `ignoringLineEndings()` turns `contains`/`same` into
+  `assertStringContainsStringIgnoringLineEndings`/`assertStringEqualsStringIgnoringLineEndings`;
+  `ignoringWhitespace(true)` turns `same`/`notSame` into `assertStringEqualsStringIgnoringWhitespace`/
+  `assertStringNotEqualsStringIgnoringWhitespace` (a literal flag only); a pattern after
+  `ignoringCase()` keeps its plain assertion, since that mode skips patterns. PHPUnit has no form for
+  the other combinations, so these leave the chain untouched: `startsWith`/`endsWith`/`notStartsWith`/`notEndsWith` after any
+  modifier, `notContains`, `notSame` and the patterns after `ignoringLineEndings()`, the substring
+  and pattern checks after `ignoringWhitespace(true)`, several modes in effect at once, and
+  `ignoringWhitespace()` without line breaks, `ignoringBlankLines()` and `ignoringAnsi()` at all. Matchers with no faithful PHPUnit line (JSON path/structure,
+  `every`, `allOf()` with a class name or a pseudo-type, `notEmpty` on the `iterable` head, the `callable` matchers `isStatic`/`notStatic`/`hasReturnType`, custom)
+  leave the whole chain untouched rather than half-converting. **Message residual:** the emitted
+  needle-and-subject assertions (`assertStringStartsWith`, `assertMatchesRegularExpression`, …) carry
+  no message, so a matcher's `$message` is dropped.
 - **`RepeatRetryRector`** (registered) — converts **method-level** `#[\Testo\Repeat]` /
   `#[\Testo\Retry]` into PHPUnit's `#[Repeat]` / `#[Retry]` (available since PHPUnit 13.3). Testo's
   `maxFailures` (tolerated failures, default 0) maps to PHPUnit's `failureThreshold` (aborting failure
