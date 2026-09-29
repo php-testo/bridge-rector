@@ -65,6 +65,7 @@ leaves it untouched; the per-folder `TODO.md` lists the residuals.
 | **`final` test classes** | ✅ *`FinalizeTestClassRector`: `*Test` classes carrying `#[Test]`, not `*TestCase`, not abstract, not extended within the processed paths* |
 | **Return types** | ✅ *Rector's `AddVoidReturnTypeWhereNoReturnRector`, `ReturnNeverTypeRector`* |
 | **Assertion pipes** | 🟡 *`MergeAssertChainRector`: adjacent chains with the same typed head on the same variable* |
+| **Imports** | ✅ *`ImportTestoNamesRector`: fully qualified `Testo\`, `Mockery` and `JMac\Testing\` names get a `use` (or an existing import or alias), unless the short name is taken by another import, a class-like in the file, a class of the same namespace or a short reference to another class; docblock names stay as written. Unused `PHPUnit\` and Mockery imports are removed, counting code and docblock references* |
 
 ## Shift set (deprecated Testo → current Testo)
 
@@ -96,7 +97,8 @@ Done since the first cut: **structural class/method conversion** (Testo ↔ PHPU
 `#[\PHPUnit\Framework\Attributes\Test]` attribute is renamed to `#[\Testo\Test]`, a `@test` docblock
 annotation is dropped and replaced by the attribute, and a bare `test`-prefixed method simply gains
 the attribute (idempotent — a method already carrying `#[\Testo\Test]` is left alone); a trait's
-non-abstract test methods gain it the same way. The mirror
+non-abstract test methods gain it the same way. `parent::method();` statements that resolve into
+PHPUnit are dropped, while calls reaching a method of a converted local base stay. The mirror
 `TestClassToTestCaseRector` (Testo → PHPUnit) adds `extends \PHPUnit\Framework\TestCase` and, for a
 class-level `#[\Testo\Test]`, removes it and adds a per-method `#[\PHPUnit\Framework\Attributes\Test]`
 to every public, non-static, `void`/`never` method (mirroring Testo's locator, so static/`iterable`
