@@ -4,8 +4,10 @@ declare(strict_types=1);
 
 namespace Testo\Bridge\Rector\Testing\Internal;
 
+use Internal\Path;
 use Psr\Log\LoggerInterface;
 use Rector\Application\ApplicationFileProcessor;
+use Rector\Application\RectorRegistry;
 use Rector\Autoloading\BootstrapFilesIncluder;
 use Rector\Configuration\ConfigurationFactory;
 use Rector\Configuration\Option;
@@ -15,9 +17,8 @@ use Rector\DependencyInjection\LazyContainerFactory;
 use Rector\NodeTypeResolver\DependencyInjection\PHPStanServicesFactory;
 use Rector\NodeTypeResolver\Reflection\BetterReflection\SourceLocatorProvider\DynamicSourceLocatorProvider;
 use Rector\PhpParser\NodeTraverser\RectorNodeTraverser;
-use Rector\ValueObject\Error\SystemError;
-use Internal\Path;
 use Rector\Testing\Fixture\FixtureSplitter;
+use Rector\ValueObject\Error\SystemError;
 use Testo\Assert;
 use Testo\Common\Messenger;
 
@@ -65,9 +66,14 @@ final readonly class RectorRunner
         }
 
         # Mirror AbstractRectorTestCase: hand the freshly-registered rules to the traverser.
-        # `findByContract()` returns them as a plain, 0-indexed list.
+        # `findByContract()` returns them as a plain, 0-indexed list. Rector before 2.8 keeps the
+        # rule list on the traverser, later versions in `RectorRegistry`.
         $rectors = $rectorConfig->findByContract(RectorInterface::class);
-        $rectorConfig->make(RectorNodeTraverser::class)->refreshPhpRectors($rectors);
+        if (\class_exists(RectorRegistry::class)) {
+            $rectorConfig->make(RectorRegistry::class)->refreshRectors($rectors);
+        } else {
+            $rectorConfig->make(RectorNodeTraverser::class)->refreshPhpRectors($rectors);
+        }
 
         $this->fileProcessor = $rectorConfig->make(ApplicationFileProcessor::class);
         $this->sourceLocator = $rectorConfig->make(DynamicSourceLocatorProvider::class);

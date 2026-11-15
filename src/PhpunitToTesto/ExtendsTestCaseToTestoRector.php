@@ -5,19 +5,19 @@ declare(strict_types=1);
 namespace Testo\Bridge\Rector\PhpunitToTesto;
 
 use PhpParser\Node;
+use PhpParser\Node\Arg;
 use PhpParser\Node\Attribute;
 use PhpParser\Node\AttributeGroup;
 use PhpParser\Node\Expr\StaticCall;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name;
-use PhpParser\Node\Arg;
 use PhpParser\Node\Name\FullyQualified;
 use PhpParser\Node\Scalar\String_;
-use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Class_;
+use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Expression;
-use PhpParser\NodeVisitor;
 use PhpParser\Node\Stmt\Trait_;
+use PhpParser\NodeVisitor;
 use PHPStan\Reflection\ReflectionProvider;
 use Rector\BetterPhpDocParser\PhpDocInfo\PhpDocInfo;
 use Rector\BetterPhpDocParser\PhpDocInfo\PhpDocInfoFactory;
@@ -27,6 +27,7 @@ use Rector\Rector\AbstractRector;
 use Symplify\RuleDocGenerator\ValueObject\CodeSample\CodeSample;
 use Symplify\RuleDocGenerator\ValueObject\RuleDefinition;
 use Testo\Bridge\Rector\Internal\DroppedAttributes;
+use Testo\Bridge\Rector\Internal\OriginalTokens;
 use Testo\Bridge\Rector\Internal\PhpDocTagText;
 use Testo\Bridge\Rector\Internal\PhpunitTestCaseClass;
 use Testo\Bridge\Rector\Testing\TestRectorFixtures;
@@ -75,6 +76,8 @@ use Testo\Bridge\Rector\Testing\TestRectorFixtures;
 #[TestRectorFixtures('ExtendsTestCaseToTestoRector')]
 final class ExtendsTestCaseToTestoRector extends AbstractRector
 {
+    use OriginalTokens;
+
     public function __construct(
         private readonly PhpDocInfoFactory $phpDocInfoFactory,
         private readonly PhpDocTagRemover $phpDocTagRemover,
@@ -331,6 +334,6 @@ final class ExtendsTestCaseToTestoRector extends AbstractRector
         }
 
         $method->attrGroups = $keptGroups;
-        DroppedAttributes::keepFormat($method, $this->file->getOldTokens());
+        DroppedAttributes::keepFormat($method, $this->originalTokens());
     }
 }

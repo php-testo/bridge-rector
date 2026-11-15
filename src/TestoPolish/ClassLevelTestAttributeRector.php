@@ -9,15 +9,16 @@ use PhpParser\Node\Attribute;
 use PhpParser\Node\AttributeGroup;
 use PhpParser\Node\Identifier;
 use PhpParser\Node\Name\FullyQualified;
-use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Class_;
-use PhpParser\Node\Stmt\TraitUse;
+use PhpParser\Node\Stmt\ClassMethod;
 use PhpParser\Node\Stmt\Trait_;
+use PhpParser\Node\Stmt\TraitUse;
 use PHPStan\Reflection\ReflectionProvider;
 use Rector\Rector\AbstractRector;
 use Symplify\RuleDocGenerator\ValueObject\CodeSample\CodeSample;
 use Symplify\RuleDocGenerator\ValueObject\RuleDefinition;
 use Testo\Bridge\Rector\Internal\DroppedAttributes;
+use Testo\Bridge\Rector\Internal\OriginalTokens;
 use Testo\Bridge\Rector\Internal\ProcessedClasses;
 use Testo\Bridge\Rector\Testing\TestRectorFixtures;
 
@@ -48,6 +49,8 @@ use Testo\Bridge\Rector\Testing\TestRectorFixtures;
 #[TestRectorFixtures('ClassLevelTestAttributeRector')]
 final class ClassLevelTestAttributeRector extends AbstractRector
 {
+    use OriginalTokens;
+
     private const TEST = 'Testo\\Test';
 
     /** Attributes whose methods the lifecycle plugin excludes from the class-level selection. */
@@ -284,7 +287,7 @@ final class ClassLevelTestAttributeRector extends AbstractRector
             }
 
             $method->attrGroups = $kept;
-            DroppedAttributes::keepFormat($method, $this->file->getOldTokens());
+            DroppedAttributes::keepFormat($method, $this->originalTokens());
         }
     }
 }
