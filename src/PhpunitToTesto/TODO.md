@@ -46,7 +46,9 @@ Mocks are out of this set: they convert through `phpunit-to-double` or `phpunit-
   `#[\Testo\Test]`). A detached class has no parent, so `#[\Override]` is dropped from every method an
   implemented interface does not declare (`setUp()` and other `TestCase` hooks); an unresolvable
   interface keeps all of them. A class reaching `TestCase` through an intermediate base keeps its `extends` and
-  `#[\Override]` and only gains the `#[\Testo\Test]` marks, as do the non-abstract test methods of a trait. **Residual:** methods are NOT renamed —
+  `#[\Override]` and only gains the `#[\Testo\Test]` marks, as do the non-abstract test methods of a trait.
+  A trait also loses each abstract method that only restates a PHPUnit assertion (untyped, `void` or
+  `never`), so a using class off `TestCase` is not left with an unimplemented method. **Residual:** methods are NOT renamed —
   Testo discovers by attribute, so keeping `testFoo()` is harmless, and prefix cleanup / call-site
   rewriting is left manual.
 - **ExpectExceptionToTestoRector** (registered) — now folds the fluent chain, not just the bare
@@ -70,10 +72,22 @@ Mocks are out of this set: they convert through `phpunit-to-double` or `phpunit-
   the `@dataProvider` docblock tag (mechanics adapted from Rector's own rule, minus the
   `TestCase` gate, so no `phpunit/phpunit` dependency) and the PHPUnit `#[DataProvider]` attribute.
   Cross-class providers (`Other::method` / `#[DataProviderExternal]`) are still left in place —
-  Testo's `DataProvider` takes a single provider and the external form is rare.
+  Testo's `DataProvider` takes a single provider and the external form is rare. **Residual:** the
+  attribute's `validateArgumentCount` and `skipWhenEmpty` have no Testo option and are dropped; an
+  empty provider then marks the test Risky where `skipWhenEmpty: true` made PHPUnit skip it.
 - **DoesNotPerformAssertionsToTestoRector** (registered) — direct attribute rename
   `#[\PHPUnit\Framework\Attributes\DoesNotPerformAssertions]` → `#[\Testo\Assert\ExpectNoAssertions]`
   (equivalent "no assertions expected" markers).
+- **AssertMethodAttributeRector** (registered) — an `assert*` method or function whose own body calls
+  a PHPUnit assertion (`$this->`/`self::`/`static::`/`parent::`, `Assert::assertX()`, the functions),
+  `\Testo\Assert`, or another helper of the same class gains `#[\Testo\Common\Attribute\AssertMethod]`,
+  so Testo reports a failure from the helper's frame. Calls inside a closure or a nested class run in
+  another frame and do not count. Testo does not run a method that carries the attribute, so a method
+  it would run as a test is never marked: `#[Test]`, `@test`, and a public `void`/`never` method of a
+  class-level `#[\Testo\Test]` class (own, inherited or from a trait) or of a trait, which cannot tell
+  whether such a class uses it. **Residual:** a helper that only delegates to an inherited helper is
+  not marked. PHPUnit filters its own frames without a marker, so the source has nothing to rename; a
+  method that already carries the attribute is left as is.
 - **MergeAssertChainRector** (registered) — a cleanup pass that collapses adjacent
   `\Testo\Assert::<type>($var)->…` fluent chains sharing an **identical** typed head (same
   `Assert::<type>` method applied to the same single **variable**) into one chain, concatenating the
@@ -92,6 +106,17 @@ Mocks are out of this set: they convert through `phpunit-to-double` or `phpunit-
   (`same`/`true`/`count`/…) are `void` static calls or would need a typed head that turns a `TypeError`
   into an `AssertionException`, changing the failure status; so converted PHPUnit `assert*` runs stay
   as separate flat lines. This rule only tidies pre-existing typed pipes.
+- **Named arguments** (`AssertCallToTestoRector`, `TypedAssertCallToTestoRector`) — a named argument
+  binds to its position through the reflection of `PHPUnit\Framework\Assert`, so the parameter names
+  of the installed PHPUnit decide, and the call converts as if written positionally. A call stays
+  untouched when the binding cannot be resolved: PHPUnit is not installed, a name the declaration
+  lacks, a missing argument before a bound one (`assertEquals(expected: 1, message: 'm')`), an unpacked
+  argument or a first-class callable. **Residual:** the arguments are evaluated in Testo's order, so
+  side effects that depend on each other can run in a different order than in the source.
+  The other rules that carry PHPUnit arguments over bind them by PHPUnit's parameter names too, since
+  Testo spells its own differently: `expectException`/`expectExceptionMessage`/`MessageMatches`/`Code`
+  (`ExpectExceptionToTestoRector`), `#[Repeat]`/`#[Retry]`, `#[CoversClass]` and `#[DataProvider]`.
+  There the names are fixed in the rule, and an unknown name leaves the call or attribute untouched.
 - **TypedAssertCallToTestoRector** (registered) — the sibling of `AssertCallToTestoRector` for the
   assertions whose faithful Testo form is a **typed head + matcher** rather than a flat facade call.
   The subject moves from an argument to the head argument (evaluated once, no hoisting needed):
@@ -162,7 +187,9 @@ Mocks are out of this set: they convert through `phpunit-to-double` or `phpunit-
   and passed `assertNotRegExp`; `matchesRegex()`/`notMatchesRegex()` throw
   `\InvalidArgumentException` there, as PHPUnit 10+ throws a framework exception. The string matchers
   also need a string subject: outside `strict_types` PHPUnit's `string` parameter coerces an int,
-  float or `Stringable`, which `Assert::string()` rejects.
+  float or `Stringable`, which `Assert::string()` rejects, and under `strict_types` PHPUnit's
+  `TypeError` becomes an assertion failure. The converted test fails loudly in both cases, so the
+  difference is never a false pass.
 
   **Whitespace residual:** PHPUnit runs `preg_replace('/\s+/u', ' ')` and `trim()`, while
   `ignoringWhitespace(lineBreaks: true)` also counts the `\h`/`\v` characters outside `\s` (U+180E)
@@ -209,3 +236,19 @@ expectations belong to a test method (or a static data provider); a matching cal
 or at namespace level is left untouched. Each rule carries an `outside_method_left_unchanged` fixture
 proving the no-op. (Unlike the reverse direction the outputs — static `\Testo\Assert::*`/`\Testo\Expect::*`
 calls and `throw` — are valid anywhere, so this is a scoping/consistency choice, not a fatal-avoidance one.)
+
+Assertion methods handled by `AssertCallToTestoRector` and `TypedAssertCallToTestoRector` must
+resolve to a native PHPUnit Assert/TestCase declaration. Custom, overridden, magic, mixed-receiver
+and unresolved calls are left untouched. Keep PHPUnit resolvable until the migration is complete.
+`parent::assertX()` resolves from the parent class on, and an explicit `Assert::assertX()` or
+`TestCase::assertX()` on PHPUnit's classes converts as well. `ExtendsTestCaseToTestoRector` rewrites a
+`parent::` call to a static assertion of `Assert` into `Assert::` instead of dropping it with the other
+`parent::` calls into PHPUnit: a mapped one converts, an unmapped one stays a valid call, and a user
+override that delegates to PHPUnit's assertion keeps asserting. `TestCase` hooks such as
+`assertPostConditions()` are instance methods and are dropped.
+Ownership is read from PHPStan's reflection of the class as loaded from source, so a class that
+`ExtendsTestCaseToTestoRector` detaches from `TestCase` in the same run still converts; that reflection
+is looked up by name, so it only counts when it comes from the same file. A class detached by an
+earlier run no longer reaches PHPUnit at all. In a trait the using classes are unknown: a call
+converts unless the trait implements or intercepts (`__call`/`__callStatic`) that method, or requires
+a version that returns a value (an untyped, `void` or `never` abstract one restates PHPUnit's).

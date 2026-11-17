@@ -66,11 +66,35 @@ memory-leak / retry / repeat, Pest higher-order & `arch()` tests, etc.) are
 **not silently dropped**: each is a documented stub rule plus an entry in the direction's
 `TODO.md`.
 
+### PHPUnit assertion ownership
+
+Assertion methods must resolve to a declaration on PHPUnit's `Assert` or `TestCase`, so keep PHPUnit
+installed while migrating: without it no assertion method converts. An unrelated, overridden, magic
+or unresolved method is left untouched. A trait cannot tell which classes use it, so a call there
+converts unless the trait implements or intercepts (`__call`) that method, or requires one that
+returns a value; an untyped, `void` or `never` abstract declaration restates PHPUnit's own, and
+`ExtendsTestCaseToTestoRector` removes it from the trait.
+
+A class detached from `TestCase` by an earlier run no longer reaches PHPUnit, so convert a base class
+and its subclasses in the same run: the subclasses' assertions stay PHPUnit calls otherwise.
+
+A custom `assert*` helper whose body asserts gains `#[\Testo\Common\Attribute\AssertMethod]`
+(`AssertMethodAttributeRector`), so a failure inside it is reported from the helper's frame. Testo
+does not run a method that carries the attribute, so a method it would run as a test is never marked:
+one with `#[Test]` or `@test`, and a public `void`/`never` method of a class-level `#[\Testo\Test]`
+class or of a trait. The Testo → PHPUnit set drops the attribute again, with its import
+(`AssertMethodToPhpUnitRector`).
+
 ### Argument order (important)
 
 Testo's comparison assertions are `(actual, expected)`; PHPUnit's are `(expected, actual)`.
 Both `AssertCall*` rules swap the first two arguments accordingly — getting this wrong would
 silently invert every comparison, so it is covered by fixtures.
+
+Named arguments are bound by PHPUnit's own parameter names, read through reflection of the installed
+`PHPUnit\Framework\Assert`, and the call converts as if written positionally. A binding that cannot be
+resolved (an unknown name, a missing argument before a bound one, an unpacked argument, a first-class
+callable) leaves the call untouched.
 
 ## Why Testo → PHPUnit
 
